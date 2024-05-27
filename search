@@ -1,0 +1,61 @@
+#!python3
+
+import sentence_transformers
+import numpy as np
+import pickle
+import argparse
+import sqlite3
+import datetime
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--device", help="The PyTorch device to use")
+parser.add_argument("search", help="The query to search for")
+args = parser.parse_args()
+
+model = sentence_transformers.SentenceTransformer("all-MiniLM-L12-v2", device=args.device or "mps")
+
+with open("dump.pickle", "rb") as f:
+    everything = pickle.load(f)
+
+search_embed = model.encode(args.search)
+for i, art in enumerate(everything):
+    embed = art["embedding"]
+    similarity = np.dot(embed, search_embed) / (
+        np.linalg.norm(embed) * np.linalg.norm(search_embed)
+    )
+    art["similarity"] = similarity
+
+doc = """
+<html>
+<body>
+
+"""
+
+conn = sqlite3.connect("news.db")
+cur = conn.cursor()
+
+sorted = sorted(everything, key=lambda x: x["similarity"])
+for i in sorted[-10:]:
+    cur.execute("SELECT * FROM articles_meta WHERE uid = ?", (i["id"],))
+    meta = cur.fetchone()
+    formatted = int(str(meta[2])[:-3])
+    date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
+    date = date.strftime("%a, %B %d %Y")
+    doc += f"""
+    <h2>{i['title']}</h2>
+    <ul>
+    <li>Similarity: {i['similarity']}</li>
+    <li>Date: {date}</li>
+    <li>URL: {meta[3]}</li>
+    <li>Publication: {meta[5]}</li>
+    </ul>
+    <p>{i['article']}</p>
+    """
+
+doc += """
+</body>
+</html>
+"""
+
+with open("out.html", "w") as f:
+    f.write(doc)
