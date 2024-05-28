@@ -36,7 +36,9 @@ embeddings = model.encode(articles, show_progress_bar=True)
 
 everything = []
 for i, embed in enumerate(embeddings):
-    everything.append({"id": ids[i], "title": titles[i], "article": articles[i], "embedding": embed})
+    everything.append(
+        {"id": ids[i], "title": titles[i], "article": articles[i], "embedding": embed}
+    )
 
 with open("dump.pickle", "wb") as f:
     pickle.dump(everything, f)
