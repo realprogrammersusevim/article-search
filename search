@@ -1,12 +1,13 @@
 #!python3
 
-import sentence_transformers
-import numpy as np
-import pickle
 import argparse
-import sqlite3
 import datetime
+import pickle
+import sqlite3
+
+import numpy as np
 import requests
+import sentence_transformers
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", "--device", help="The PyTorch device to use")

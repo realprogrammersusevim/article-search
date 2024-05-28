@@ -1,4 +1,3 @@
-import argparse
 import datetime
 import pickle
 import sqlite3
@@ -24,12 +23,16 @@ def handle_search(search):
 
     # Set up the embedding model
     model = sentence_transformers.SentenceTransformer("all-MiniLM-L12-v2", device="mps")
+    emit("status", "Loaded model")
     # Load the data
     with open("dump.pickle", "rb") as f:
         everything = pickle.load(f)
 
+    emit("status", "Loaded data")
+
     # Embed the search query
     search_embed = model.encode(search)
+    emit("status", "Embedded search query")
 
     # Calculate the similarity between the search query and each article
     for i, art in enumerate(everything):
@@ -38,6 +41,8 @@ def handle_search(search):
             np.linalg.norm(embed) * np.linalg.norm(search_embed)
         )
         art["similarity"] = similarity
+
+    emit("status", "Calculated similarities")
 
     # Connect to the database
     conn = sqlite3.connect("news.db")
@@ -52,11 +57,15 @@ def handle_search(search):
     for article in articles:
         # The article we're working with
         curr_article = article
+        print(curr_article["id"])
+        emit("status", f"Processing article {curr_article['id']}")
 
         cur.execute("SELECT * FROM articles_meta WHERE uid = ?", (curr_article["id"],))
         meta = cur.fetchone()
         formatted = int(str(meta[2])[:-3])
         date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
+        print("Got metadata, starting generation...")
+        emit("status", "Got metadata, starting generation...")
         resp = requests.post(
             "http://localhost:11434/api/generate",
             json={
@@ -65,14 +74,23 @@ def handle_search(search):
                 "prompt": f"Use the following format to provide a summary of the news article included below and don't deviate from the format.\n\n<h4>Main thesis</h4><p>Put the main thesis of the news article here.<h4>Key facts</h4></p><ul><li>First fact in the article, with the source in parenthesis if the article cites another source</li><li>Second fact, again with the source if any</li><li>And so on</li></ul>\n\nBEGIN NEWS ARTICLE\n{article['article']}\nEND NEWS ARTICLE",
             },
         ).json()
+        print("Generated summary")
+        emit("status", "Generated summary")
 
         # Add the article's metadata
         curr_article["date"] = date.strftime("%a, %B %d %Y")
-        curr_article["summary"] = resp["text"]
+        curr_article["summary"] = resp["response"]
         curr_article["url"] = meta[3]
         curr_article["publication"] = meta[5]
 
+        # Change article to be JSON serializable
+        curr_article.pop("embedding", None)
+        curr_article.pop("similarity", None)
+        curr_article.pop("id", None)
+
         # Send the article to the client
+        print("Sending article")
+        emit("status", "Sending article")
         emit("new_article", curr_article)
 
 
