@@ -1,41 +1,46 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/magick.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/normalize.css') }}"
+    />
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/magick.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/normalize.css') }}" />
-</head>
+  <body>
+    <h1 style="text-align: center">Extemp Genius</h1>
+    <form id="form" action="">
+      <input id="input" autocomplete="off" /><button>Search</button>
+    </form>
+    <p style="text-align: center"><small id="status">Status</small></p>
+    <div id="articles"></div>
+  </body>
 
-<body>
-  <h1>Extemp Genius</h1>
-  <form id="form" action="">
-    <input id="input" autocomplete="off" /><button>Search</button>
-  </form>
-  <p id="status">Status</p>
-  <div id="articles"></div>
-</body>
+  <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+  <script>
+    const socket = io();
 
-<script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
-<script>
-  const socket = io();
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const articles = document.getElementById("articles");
+    const status = document.getElementById("status");
 
-  const form = document.getElementById("form");
-  const input = document.getElementById("input");
-  const articles = document.getElementById("articles");
-  const status = document.getElementById("status");
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (input.value) {
+        socket.emit("search", input.value);
+        input.value = "";
+      }
+    });
 
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    if (input.value) {
-      socket.emit("search", input.value);
-      input.value = "";
-    }
-  });
-
-  socket.on("new_article", (article) => {
-    const articleElement = document.createElement("div");
-    articleElement.innerHTML = `
+    socket.on("new_article", (article) => {
+      const articleElement = document.createElement("div");
+      articleElement.innerHTML = `
           <h2>${article.title}</h2>
           <ul>
             <li>Date: ${article.date}</li>
@@ -45,16 +50,15 @@
           <p>${article.summary}</p>
           <details>
             <summary><b>Full Text</b></summary>
-            <p>${article.text}</p>
+            <p>${article.article}</p>
           </details>
         `;
-    articles.appendChild(articleElement);
-    window.scrollTo(0, document.body.scrollHeight);
-  });
+      articles.appendChild(articleElement);
+      window.scrollTo(0, document.body.scrollHeight);
+    });
 
-  socket.on("status", (status_update) => {
-    status.innerText = status_update;
-  });
-</script>
-
+    socket.on("status", (status_update) => {
+      status.innerText = status_update;
+    });
+  </script>
 </html>
