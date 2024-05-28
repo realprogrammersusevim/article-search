@@ -3,10 +3,10 @@ import pickle
 import sqlite3
 
 import numpy as np
-import requests
 import sentence_transformers
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
+from openai import OpenAI
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -32,6 +32,7 @@ def handle_search(search):
 
     # Embed the search query
     search_embed = model.encode(search)
+    model = None  # Free up memory and stop the "Oh no you forked the process" error
     emit("status", "Embedded search query")
 
     # Calculate the similarity between the search query and each article
@@ -64,34 +65,50 @@ def handle_search(search):
         meta = cur.fetchone()
         formatted = int(str(meta[2])[:-3])
         date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
-        print("Got metadata, starting generation...")
-        emit("status", "Got metadata, starting generation...")
-        resp = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3",
-                "stream": False,
-                "prompt": f"Use the following format to provide a summary of the news article included below and don't deviate from the format.\n\n<h4>Main thesis</h4><p>Put the main thesis of the news article here.<h4>Key facts</h4></p><ul><li>First fact in the article, with the source in parenthesis if the article cites another source</li><li>Second fact, again with the source if any</li><li>And so on</li></ul>\n\nBEGIN NEWS ARTICLE\n{article['article']}\nEND NEWS ARTICLE",
-            },
-        ).json()
-        print("Generated summary")
-        emit("status", "Generated summary")
 
         # Add the article's metadata
         curr_article["date"] = date.strftime("%a, %B %d %Y")
-        curr_article["summary"] = resp["response"]
         curr_article["url"] = meta[3]
         curr_article["publication"] = meta[5]
 
         # Change article to be JSON serializable
         curr_article.pop("embedding", None)
         curr_article.pop("similarity", None)
-        curr_article.pop("id", None)
 
         # Send the article to the client
         print("Sending article")
         emit("status", "Sending article")
         emit("new_article", curr_article)
+
+        print("Got metadata, starting generation...")
+        emit("status", "Got metadata, starting generation...")
+
+        client = OpenAI(api_key="lol", base_url="http://localhost:11434/v1")
+        stream = client.chat.completions.create(
+            model="llama3",
+            stream=True,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a seasoned writer and summarizer.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Use the following format to provide a summary of the news article included below and don't deviate from the format.\n\n<h4>Main thesis</h4><p>Put the main thesis of the news article here.<h4>Key facts</h4></p><ul><li>First fact in the article, with the source in parenthesis if the article cites another source</li><li>Second fact, again with the source if any</li><li>And so on</li></ul>\n\nBEGIN NEWS ARTICLE\n{article['article']}\nEND NEWS ARTICLE",
+                },
+                {"role": "assistant", "content": "<h4>Main thesis</h4>"},
+            ],
+        )
+        text = "<h4>Main thesis</h4>"  # We've already pre-filled the AI response
+        for chunk in stream:
+            text += chunk.choices[0].delta.content or ""
+            emit(
+                "token",
+                {
+                    "id": curr_article["id"],
+                    "text": text,
+                },
+            )
 
 
 if __name__ == "__main__":

@@ -10,15 +10,34 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/normalize.css') }}"
     />
+    <style>
+      #sidebar {
+        position: fixed;
+        /* Fixed Sidebar (stay in place on scroll) */
+        z-index: 1;
+        /* Stay on top */
+        top: 0;
+        /* Stay at the top */
+        left: 0;
+        overflow-x: hidden;
+        padding-top: 20px;
+        width: 200px;
+      }
+    </style>
   </head>
 
   <body>
-    <h1 style="text-align: center">Extemp Genius</h1>
-    <form id="form" action="">
-      <input id="input" autocomplete="off" /><button>Search</button>
-    </form>
-    <p style="text-align: center"><small id="status">Status</small></p>
-    <div id="articles"></div>
+    <main>
+      <h1>Extemp Jenius</h1>
+      <section>
+        <form id="form" action="">
+          <input id="input" autocomplete="off" /><button>Search</button>
+        </form>
+        <p><small id="status">Status</small></p>
+      </section>
+      <div id="articles"></div>
+      <div id="sidebar"></div>
+    </main>
   </body>
 
   <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
@@ -33,32 +52,44 @@
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       if (input.value) {
+        // articles.innerHTML = "";
+        // sidnav.innerHTML = "";
         socket.emit("search", input.value);
-        input.value = "";
+        // input.value = "";
       }
     });
 
     socket.on("new_article", (article) => {
-      const articleElement = document.createElement("div");
+      const sidnavElement = document.createElement("a");
+      sidnavElement.innerText = article.title.substring(0, 50) + "...";
+      sidnavElement.href = "#" + article.id;
+      document.getElementById("sidebar").appendChild(sidnavElement);
+
+      const articleElement = document.createElement("section");
       articleElement.innerHTML = `
-          <h2>${article.title}</h2>
-          <ul>
-            <li>Date: ${article.date}</li>
-            <li>Publication: <a href="${article.url}">${article.publication}</a></li>
-          </ul>
-          <h3>Summary</h3>
-          <p>${article.summary}</p>
-          <details>
-            <summary><b>Full Text</b></summary>
-            <p>${article.article}</p>
-          </details>
-        `;
+            <h2>${article.title}</h2>
+            <ul>
+              <li>Date: ${article.date}</li>
+              <li>Publication: <a href="${article.url}">${article.publication}</a></li>
+            </ul>
+            <h3>Summary</h3>
+            <p id="${article.id}"></p>
+            <details>
+              <summary><b>Full Text</b></summary>
+              <p>${article.article}</p>
+            </details>
+          `;
       articles.appendChild(articleElement);
+
       window.scrollTo(0, document.body.scrollHeight);
     });
 
     socket.on("status", (status_update) => {
       status.innerText = status_update;
+    });
+
+    socket.on("token", (token) => {
+      document.getElementById(token.id).innerHTML = token.text;
     });
   </script>
 </html>
