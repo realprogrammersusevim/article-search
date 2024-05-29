@@ -61,9 +61,16 @@
 
     socket.on("new_article", (article) => {
       const sidnavElement = document.createElement("a");
-      sidnavElement.innerText = article.title.substring(0, 50) + "...";
+      // If the title is too long, cut it off and add an ellipses at the end
+      if (article.title.length > 50) {
+        sidnavElement.innerText = article.title.substring(0, 50) + "...";
+      }
       sidnavElement.href = "#" + article.id;
+
+      const breakElement = document.createElement("hr");
+
       document.getElementById("sidebar").appendChild(sidnavElement);
+      document.getElementById("sidebar").appendChild(breakElement);
 
       const articleElement = document.createElement("section");
       articleElement.innerHTML = `
