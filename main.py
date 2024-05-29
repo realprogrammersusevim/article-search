@@ -22,7 +22,9 @@ def handle_search(search):
     print(search)
 
     # Set up the embedding model
-    model = sentence_transformers.SentenceTransformer("all-MiniLM-L12-v2", device="mps")
+    model = sentence_transformers.SentenceTransformer(
+        "Snowflake/snowflake-arctic-embed-m", device="mps"
+    )
     emit("status", "Loaded model")
     # Load the data
     with open("dump.pickle", "rb") as f:

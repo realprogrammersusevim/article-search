@@ -1,12 +1,15 @@
 #!python3
 
-import sentence_transformers
-import sqlite3
 import pickle
 import re
+import sqlite3
+
+import sentence_transformers
 
 # Load the pre-trained model
-model = sentence_transformers.SentenceTransformer("all-MiniLM-L12-v2", device="mps")
+model = sentence_transformers.SentenceTransformer(
+    "Snowflake/snowflake-arctic-embed-m", device="mps"
+)
 
 # Connect to the SQLite database
 conn = sqlite3.connect("news.db")
