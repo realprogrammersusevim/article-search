@@ -2,6 +2,7 @@ import datetime
 import pickle
 import sqlite3
 
+import markdown
 import numpy as np
 import sentence_transformers
 from flask import Flask, render_template
@@ -86,6 +87,7 @@ def handle_search(search):
         emit("status", "Got metadata, starting generation...")
 
         client = OpenAI(api_key="lol", base_url="http://localhost:11434/v1")
+        prefill = "#### Main Thesis\n\n"  # Prefill the LLM to get it started on the right track
         stream = client.chat.completions.create(
             model="llama3",
             stream=True,
@@ -96,19 +98,20 @@ def handle_search(search):
                 },
                 {
                     "role": "user",
-                    "content": f"Use the following format to provide a summary of the news article included below and don't deviate from the format.\n\n<h4>Main thesis</h4><p>Put the main thesis of the news article here.<h4>Key facts</h4></p><ul><li>First fact in the article, with the source in parenthesis if the article cites another source</li><li>Second fact, again with the source if any</li><li>And so on</li></ul>\n\nBEGIN NEWS ARTICLE\n{article['article']}\nEND NEWS ARTICLE",
+                    "content": f"Use the following format to provide a summary of the news article included below and don't deviate from the format.\n\n#### Main thesis\n\nPut the main thesis of the news article here.\n\n#### Key facts\n\n* First fact in the article, with the source in parenthesis if the article cites another source\n* Second fact, again with the source if any\n* And so on\n\nBEGIN NEWS ARTICLE\n{article['article']}\nEND NEWS ARTICLE",
                 },
-                {"role": "assistant", "content": "<h4>Main thesis</h4>"},
+                {"role": "assistant", "content": prefill},
             ],
         )
-        text = "<h4>Main thesis</h4>"  # We've already pre-filled the AI response
+        text = prefill
         for chunk in stream:
             text += chunk.choices[0].delta.content or ""
+            html = markdown.markdown(text)  # Convert the markdown to HTML
             emit(
                 "token",
                 {
                     "id": curr_article["id"],
-                    "text": text,
+                    "text": html,
                 },
             )
 
