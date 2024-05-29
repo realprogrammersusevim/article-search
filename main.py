@@ -35,7 +35,6 @@ def handle_search(search):
 
     # Embed the search query
     search_embed = model.encode(search)
-    model = None  # Free up memory and stop the "Oh no you forked the process" error
     emit("status", "Embedded search query")
 
     # Calculate the similarity between the search query and each article
@@ -58,6 +57,12 @@ def handle_search(search):
     # Get the top 10 articles
     articles = sorted_art[-10:]
 
+    # Try to save some memory
+    del model
+    del everything
+    del sorted_art
+    del search_embed
+
     for article in articles:
         # The article we're working with
         curr_article = article
@@ -66,7 +71,8 @@ def handle_search(search):
 
         cur.execute("SELECT * FROM articles_meta WHERE uid = ?", (curr_article["id"],))
         meta = cur.fetchone()
-        formatted = int(str(meta[2])[:-3])
+        print(meta)
+        formatted = int(str(meta[2])[:-3])  # Chop off the last three digits
         date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
 
         # Add the article's metadata
