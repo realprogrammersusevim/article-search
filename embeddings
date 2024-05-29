@@ -27,7 +27,11 @@ for i, article in enumerate(cur):
 
     if content == "":
         skipped += 1
+        continue
     else:
+        if len(re.findall(r"\w+", content)) < 200:
+            skipped += 1
+            continue
         content = re.sub(r"[\s]?{.*?}", "", content)
         articles.append(content)
         titles.append(title)
