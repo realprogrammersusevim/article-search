@@ -9,6 +9,8 @@ from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 from openai import OpenAI
 
+from utils import create_index, Article
+
 app = Flask(__name__)
 socketio = SocketIO(app)
 
@@ -29,7 +31,8 @@ def handle_search(search):
     emit("status", "Loaded model")
     # Load the data
     with open("dump.pickle", "rb") as f:
-        everything = pickle.load(f)
+        articles = pickle.load(f)
+        print(articles[0])
 
     emit("status", "Loaded data")
 
@@ -38,12 +41,13 @@ def handle_search(search):
     emit("status", "Embedded search query")
 
     # Calculate the similarity between the search query and each article
-    for i, art in enumerate(everything):
-        embed = art["embedding"]
-        similarity = np.dot(embed, search_embed) / (
-            np.linalg.norm(embed) * np.linalg.norm(search_embed)
-        )
-        art["similarity"] = similarity
+    for i, art in enumerate(articles):
+        embed = art.embedding
+        similarity = sentence_transformers.util.cos_sim(embed, search_embed)
+        # similarity = np.dot(embed, search_embed) / (
+        #     np.linalg.norm(embed) * np.linalg.norm(search_embed)
+        # )
+        art.similarity = similarity
 
     emit("status", "Calculated similarities")
 
@@ -52,42 +56,72 @@ def handle_search(search):
     cur = conn.cursor()
 
     # Sort the articles by similarity
-    sorted_art = sorted(everything, key=lambda x: x["similarity"])
+    articles = sorted(articles, key=lambda x: x.similarity, reverse=True)
 
     # Get the top 10 articles
-    articles = sorted_art[-10:]
+    articles = articles[:10]
 
-    # Try to save some memory
-    del model
-    del everything
-    del sorted_art
-    del search_embed
+    index = create_index()
 
-    for article in articles:
+    searcher = index.searcher()
+    query = index.parse_query(search, ["title", "body"])
+
+    (top_docs, top_addresses) = searcher.search(query, 10).hits[:10]
+    best_docs = [searcher.doc(address) for address in top_addresses]
+
+    # Load the cross encoder
+    model = sentence_transformers.SentenceTransformer(
+        "mixedbread-ai/mxbai-embed-large-v1"
+    )
+
+    search_embed = model.encode(
+        f"Represent this sentence for searching relevant news articles: {search}"
+    )
+    synthesized = articles
+    for art in best_docs:
+        synthesized.append(
+                Article(art["title"], art["body"], art["id"])
+        )
+    embeddings = model.encode([art.body for art in synthesized])
+    for i, article in enumerate(synthesized):
+        article.embedding = embeddings[i]
+
+    # Calculate the similarity between the search query and each article
+    for i, art in enumerate(synthesized):
+        embed = art.embedding
+        similarity = sentence_transformers.util.cos_sim(embed, search_embed)
+        art.similarity = similarity
+
+    # Sort the articles by similarity
+    synthesized = sorted(synthesized, key=lambda x: x.similarity, reverse=True)
+
+    # Get the top 10 articles
+    synthesized = synthesized[:10]
+
+    for article in synthesized:
         # The article we're working with
-        curr_article = article
-        print(curr_article["id"])
-        emit("status", f"Processing article {curr_article['id']}")
+        print(article.title)
+        emit("status", f"Processing article {article.title}")
 
-        cur.execute("SELECT * FROM articles_meta WHERE uid = ?", (curr_article["id"],))
+        cur.execute("SELECT * FROM articles_meta WHERE uid = ?", (article.id,))
         meta = cur.fetchone()
         print(meta)
         formatted = int(str(meta[2])[:-3])  # Chop off the last three digits
         date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
 
         # Add the article's metadata
-        curr_article["date"] = date.strftime("%a, %B %d %Y")
-        curr_article["url"] = meta[3]
-        curr_article["publication"] = meta[5]
+        article.date = date.strftime("%a, %B %d %Y")
+        article.url = meta[3]
+        article.publication = meta[5]
 
         # Change article to be JSON serializable
-        curr_article.pop("embedding", None)
-        curr_article.pop("similarity", None)
+        article.embedding = None
+        article.similarity = None
 
         # Send the article to the client
         print("Sending article")
         emit("status", "Sending article")
-        emit("new_article", curr_article)
+        emit("new_article", article.serializable())
 
         print("Got metadata, starting generation...")
         emit("status", "Got metadata, starting generation...")
@@ -116,7 +150,7 @@ def handle_search(search):
             emit(
                 "token",
                 {
-                    "id": curr_article["id"],
+                    "id": article.id,
                     "text": html,
                 },
             )

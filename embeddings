@@ -5,47 +5,60 @@ import re
 import sqlite3
 
 import sentence_transformers
+import tantivy
+from tqdm import tqdm
+
+from utils import create_index, Article
 
 # Load the pre-trained model
 model = sentence_transformers.SentenceTransformer(
     "Snowflake/snowflake-arctic-embed-m", device="mps"
 )
 
+# Create the tantivy index
+index = create_index()
+writer = index.writer()
+
 # Connect to the SQLite database
 conn = sqlite3.connect("news.db")
 cur = conn.cursor()
 
+cur.execute("SELECT COUNT(*) FROM articles_fts;")
+total = cur.fetchone()[0]
 cur.execute("SELECT * FROM articles_fts;")
 articles = []
-titles = []
-ids = []
 skipped = 0
-for i, article in enumerate(cur):
-    title = article[0]
-    content = article[1]
-    id = article[2]
+for i, res in tqdm(enumerate(cur), total=total):
+    art = Article(res[0], res[1], res[2])
 
-    if content == "":
+    if art.body == "":
         skipped += 1
         continue
     else:
-        if len(re.findall(r"\w+", content)) < 200:
+        if len(re.findall(r"\w+", art.body)) < 200:
             skipped += 1
             continue
-        content = re.sub(r"[\s]?{.*?}", "", content)
-        articles.append(content)
-        titles.append(title)
-        ids.append(id)
+        art.body = re.sub(r"[\s]?{.*?}", "", art.body)
+        articles.append(art)
+
+        writer.add_document(
+            tantivy.Document(
+                title=art.title,
+                body=art.body,
+                id=art.id,
+            )
+        )
+
+writer.commit()
+
+writer.wait_merging_threads()
 
 print(f"Skipped {skipped} articles")
 print(f"Generating embeddings for {len(articles)} articles")
-embeddings = model.encode(articles, show_progress_bar=True)
+embeddings = model.encode([article.body for article in articles], show_progress_bar=True)
 
-everything = []
 for i, embed in enumerate(embeddings):
-    everything.append(
-        {"id": ids[i], "title": titles[i], "article": articles[i], "embedding": embed}
-    )
+    articles[i].embedding = embed
 
 with open("dump.pickle", "wb") as f:
-    pickle.dump(everything, f)
+    pickle.dump(articles, f)
