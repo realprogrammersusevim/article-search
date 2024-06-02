@@ -1,4 +1,7 @@
 import os
+from openai import OpenAI
+import markdown
+from flask_socketio import emit
 
 import tantivy
 
@@ -14,6 +17,7 @@ def create_index():
     index = tantivy.Index(schema, path=os.getcwd() + "/index")
     return index
 
+
 class Article:
     def __init__(self, title, body, id):
         self.title = title
@@ -27,3 +31,33 @@ class Article:
 
     def serializable(self):
         return lambda o: o.__dict__
+
+def summarize_article(article: Article):
+    client = OpenAI(api_key="lol", base_url="http://localhost:11434/v1")
+    prefill = "#### Main Thesis\n\n"  # Prefill the LLM to get it started on the right track
+    stream = client.chat.completions.create(
+        model="llama3",
+        stream=True,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a seasoned writer and summarizer.",
+            },
+            {
+                "role": "user",
+                "content": f"Use the following format to provide a summary of the news article included below and don't deviate from the format.\n\n#### Main thesis\n\nPut the main thesis of the news article here.\n\n#### Key facts\n\n* First fact in the article, with the source in parenthesis if the article cites another source\n* Second fact, again with the source if any\n* And so on\n\nBEGIN NEWS ARTICLE\n{article['article']}\nEND NEWS ARTICLE",
+            },
+            {"role": "assistant", "content": prefill},
+        ],
+    )
+    text = prefill
+    for chunk in stream:
+        text += chunk.choices[0].delta.content or ""
+        html = markdown.markdown(text)  # Convert the markdown to HTML
+        emit(
+            "token",
+            {
+                "id": article.id,
+                "text": html,
+            },
+        )
