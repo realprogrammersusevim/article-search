@@ -31,7 +31,11 @@ class Article:
         self.publication = None
 
     def serializable(self):
-        return self.__dict__
+        to_serial = self
+        # Empty the non-serializable variables
+        to_serial.embedding = None
+        to_serial.similarity = None
+        return to_serial.__dict__
 
 
 def summarize_article(article: Article):

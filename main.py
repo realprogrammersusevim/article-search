@@ -110,10 +110,6 @@ def handle_search(search):
         article.url = meta[3]
         article.publication = meta[5]
 
-        # Change article to be JSON serializable
-        article.embedding = None
-        article.similarity = None
-
         # Send the article to the client
         emit("status", "Sending article")
         emit("new_article", article.serializable())
