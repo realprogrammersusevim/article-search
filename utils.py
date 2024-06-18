@@ -1,4 +1,5 @@
 import os
+from typing import List
 from openai import OpenAI
 import markdown
 from flask_socketio import emit
@@ -30,11 +31,14 @@ class Article:
         self.publication = None
 
     def serializable(self):
-        return lambda o: o.__dict__
+        return self.__dict__
+
 
 def summarize_article(article: Article):
     client = OpenAI(api_key="lol", base_url="http://localhost:11434/v1")
-    prefill = "#### Main Thesis\n\n"  # Prefill the LLM to get it started on the right track
+    prefill = (
+        "#### Main Thesis\n\n"  # Prefill the LLM to get it started on the right track
+    )
     stream = client.chat.completions.create(
         model="llama3",
         stream=True,
