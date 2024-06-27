@@ -13,9 +13,7 @@ from utils import create_index, Article
 
 # Load the pre-trained model
 torch.device("mps")
-model = sentence_transformers.SentenceTransformer(
-    "Snowflake/snowflake-arctic-embed-m"
-)
+model = sentence_transformers.SentenceTransformer("Snowflake/snowflake-arctic-embed-m")
 
 # Create the tantivy index
 index = create_index()
@@ -57,7 +55,9 @@ writer.wait_merging_threads()
 
 print(f"Skipped {skipped} articles")
 print(f"Generating embeddings for {len(articles)} articles")
-embeddings = model.encode([article.body for article in articles], show_progress_bar=True, batch_size=32)
+embeddings = model.encode(
+    [article.body for article in articles], show_progress_bar=True, batch_size=32
+)
 
 for i, embed in enumerate(embeddings):
     articles[i].embedding = embed
