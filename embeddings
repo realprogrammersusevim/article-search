@@ -19,7 +19,7 @@ cur = conn.cursor()
 # cur.execute("SELECT COUNT(*) FROM articles_fts;")
 # total = cur.fetchone()[0]
 total = 100
-cur.execute("SELECT title, text, uid FROM articles_fts LIMIT 500;")
+cur.execute("SELECT title, text, uid FROM articles_fts;")
 all = cur.fetchall()
 old_articles = [Article(res[0], res[1], res[2]) for res in all]
 all = None
