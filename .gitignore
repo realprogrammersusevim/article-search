@@ -1,4 +1,4 @@
-news.db
-dump.pickle
+*.db
+*.pickle
 out.html
 index

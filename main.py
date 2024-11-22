@@ -1,124 +1,129 @@
-import logging
-import torch
 import datetime
-import pickle
 import sqlite3
-from typing import List
 
 import sentence_transformers
-from flask import Flask, render_template
-from flask_socketio import SocketIO, emit
+import sqlite_vec
+import torch
+from flask import Flask, render_template, request
+from sqlite_vec import serialize_float32
 
-from utils import create_index, Article, summarize_article
+from utils import Article
 
 app = Flask(__name__)
-socketio = SocketIO(app)
 
 
 @app.route("/")
 def hello_world():
-    return render_template("index.html")
+    return render_template("main.html")
 
 
-@socketio.on("search")
-def handle_search(search):
+@app.route("/search", methods=["GET"])
+def handle_search():
+    search = request.args.get("q")
+    if search is None:
+        return "No search query provided", 400
     # Set up the embedding model
     torch.device("mps")
     model = sentence_transformers.SentenceTransformer(
         "Snowflake/snowflake-arctic-embed-m"
     )
-    emit("status", "Loaded model")
-    # Load the data
-    with open("dump.pickle", "rb") as f:
-        articles = pickle.load(f)
 
-    emit("status", "Loaded data")
+    search_embed = model.encode(search)  # Embed the search query
 
-    # Embed the search query
-    search_embed = model.encode(search)
-    emit("status", "Embedded search query")
-
-    # Calculate the similarity between the search query and each article
-    for i, art in enumerate(articles):
-        embed = art.embedding
-        similarity = sentence_transformers.util.cos_sim(embed, search_embed)
-        art.similarity = similarity
-
-    emit("status", "Calculated similarities")
-
-    # Connect to the database
-    conn = sqlite3.connect("news.db")
+    conn = sqlite3.connect("search.db")  # Connect to the database
     cur = conn.cursor()
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
 
-    # Sort the articles by similarity
-    articles = sorted(articles, key=lambda x: x.similarity, reverse=True)
-
-    # Get the top 10 articles
-    articles = articles[:10]
-
-    index = create_index()
-
-    searcher = index.searcher()
-    query = index.parse_query(search, ["title", "body"])
-
-    top_docs = searcher.search(query, 10).hits[:10]
-    best_docs = [searcher.doc(doc[1]) for doc in top_docs]
-
-    # Load the cross encoder
-    model = sentence_transformers.SentenceTransformer(
-        "mixedbread-ai/mxbai-embed-large-v1"
+    # Get the articles using the embeddings
+    cur.execute(
+        "SELECT vec_articles.uid, distance FROM vec_articles WHERE embedding MATCH ? ORDER BY distance LIMIT 10",
+        (serialize_float32(search_embed),),
     )
+    embed_articles = cur.fetchall()
 
-    search_embed = model.encode(
-        f"Represent this sentence for searching relevant news articles: {search}"
+    # Scale the embedding distances to be between 0 and 1
+    min_distance = embed_articles[0][1]
+    max_distance = embed_articles[-1][1]
+    for i in range(len(embed_articles)):
+        score = (embed_articles[i][1] - min_distance) / (max_distance - min_distance)
+        embed_articles[i] = (
+            embed_articles[i][0],
+            score,
+        )
+        print(score)
+
+    # Get the articles using BM25
+    cur.execute(
+        "SELECT uid, bm25(articles_fts, 10.0, 5.0) FROM articles_fts WHERE articles_fts MATCH ? ORDER BY bm25(articles_fts, 10.0, 5.0) LIMIT 10",
+        (search,),
     )
-    synthesized = articles
-    for art in best_docs:
-        synthesized.append(Article(art["title"][0], art["body"][0], art["id"][0]))
-    embeddings = model.encode([art.body for art in synthesized])
-    for i, article in enumerate(synthesized):
-        article.embedding = embeddings[i]
+    bm25_articles = cur.fetchall()
 
-    # Deduplicate the list
-    synthesized = list(set(synthesized))
+    # Scale the bm25 scores to be between 0 and 1
+    min_score = bm25_articles[0][1]
+    max_score = bm25_articles[-1][1]
+    for i in range(len(bm25_articles)):
+        score = (bm25_articles[i][1] - min_score) / (max_score - min_score)
+        bm25_articles[i] = (bm25_articles[i][0], score)
+        print(score)
 
-    # Calculate the similarity between the search query and each article
-    for art in synthesized:
-        embed = art.embedding
-        similarity = sentence_transformers.util.cos_sim(embed, search_embed)
-        art.similarity = similarity
+    # Combine the two lists of articles and sort them by the combined score
+    combined_articles = []
+    for article in embed_articles:
+        uid = article[0]
+        score = article[1]
+        for bm25_article in bm25_articles:
+            if bm25_article[0] == uid:
+                score += bm25_article[1]
+                bm25_articles.remove(bm25_article)
+                break
 
-    # Sort the articles by similarity
-    synthesized = sorted(synthesized, key=lambda x: x.similarity, reverse=True)
+        combined_articles.append((uid, score))
 
-    # Get the top 10 articles
-    synthesized = synthesized[:10]
+    combined_articles.sort(key=lambda x: x[1], reverse=True)
 
-    for article in synthesized:
-        # The article we're working with
-        emit("status", f"Processing article {article.title}")
+    to_return = []
+    for article in combined_articles:
+        full_article = cur.execute(
+            "SELECT uid, title, body, date, url, publication FROM articles WHERE uid = ?",
+            (article[0],),
+        ).fetchone()
+        art = Article(full_article[1], full_article[2], full_article[0])
+        art.date = full_article[3]
+        art.url = full_article[4]
+        art.publication = full_article[5]
 
-        if isinstance(article.id, List):
-            article.id = article.id[0]  # Not sure why this is a list
-        cur.execute("SELECT * FROM articles_meta WHERE uid = ?", (article.id,))
-        meta = cur.fetchone()
-        formatted = int(str(meta[2])[:-3])  # Chop off the last three digits
-        date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
+        to_return.append(art)
 
-        # Add the article's metadata
-        article.date = date.strftime("%a, %B %d %Y")
-        article.url = meta[3]
-        article.publication = meta[5]
+    return render_template("results.html", search_results=to_return)
 
-        # Send the article to the client
-        emit("status", "Sending article")
-        emit("new_article", article.serializable())
 
-        emit("status", "Got metadata, starting generation...")
+@app.route("/article/<id>")
+def article(id):
+    conn = sqlite3.connect("search.db")
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT uid, title, body, date, url, publication FROM articles WHERE uid = ?",
+        (id,),
+    )
+    article = cur.fetchone()
 
-        # summarize_article(article)
+    if article is None:
+        return "Article not found", 404
+
+    article_obj = Article(article[1], article[2], article[0])
+    formatted = int(str(article[3])[:-3])  # Chop off the last three digits
+    date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
+    article_obj.date = date.strftime("%a, %B %d %Y")
+
+    article_obj.url = article[4]
+    article_obj.publication = article[5]
+    return render_template("results.html", article=article_obj)
 
 
 if __name__ == "__main__":
-    logging
-    socketio.run(app)
+    import webbrowser
+
+    webbrowser.open("http://localhost:5000/")
