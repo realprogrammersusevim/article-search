@@ -16,29 +16,21 @@ from utils import Article
 conn = sqlite3.connect("news.db")
 cur = conn.cursor()
 
-# cur.execute("SELECT COUNT(*) FROM articles_fts;")
-# total = cur.fetchone()[0]
-total = 100
-cur.execute("SELECT title, text, uid FROM articles_fts;")
-all = cur.fetchall()
-old_articles = [Article(res[0], res[1], res[2]) for res in all]
-all = None
-del all
+total = cur.execute("SELECT COUNT(*) FROM articles_fts;").fetchone()[0]
+res = cur.execute("SELECT title, text, uid FROM articles_fts;")
 new_articles = []
 skipped = 0
-for i, art in tqdm(enumerate(old_articles)):
-    if art.body == "":
+for i, art in tqdm(enumerate(res), total=total, desc="Processing articles"):
+    article = Article(art[0], art[1], art[2])
+    if article.body == "":
         skipped += 1
         continue
-    elif len(re.findall(r"\w+", art.body)) < 200:
+    elif len(re.findall(r"\w+", article.body)) < 300:
         skipped += 1
         continue
     else:
-        art.body = re.sub(r"[\s]?{.*?}", "", art.body)
-        new_articles.append(art)
-
-old_articles = None
-del old_articles
+        article.body = re.sub(r"[\s]?{.*?}", "", article.body)
+        new_articles.append(article)
 
 print(f"Skipped {skipped} articles")
 
@@ -48,14 +40,14 @@ cur = conn.cursor()
 
 deduped = 0
 # Check for duplicates
-try:
-    for article in new_articles:
+for article in tqdm(new_articles, desc="Deduplicating"):
+    try:
         cur.execute("SELECT * FROM articles WHERE uid = ?", (article.id,))
         if cur.fetchone() is not None:
             new_articles.remove(article)
             deduped += 1
-except sqlite3.OperationalError:
-    pass
+    except sqlite3.OperationalError:
+        pass
 
 conn.close()
 
