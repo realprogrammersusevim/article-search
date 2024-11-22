@@ -1,73 +1,86 @@
 import datetime
+from contextlib import asynccontextmanager
 import sqlite3
 
 import sentence_transformers
 import sqlite_vec
 import torch
-from flask import Flask, render_template, request
 from sqlite_vec import serialize_float32
+from starlette.applications import Starlette
+from starlette.routing import Route, Mount
+from starlette.staticfiles import StaticFiles
+from starlette.templating import Jinja2Templates
 
 from utils import Article
 
-app = Flask(__name__)
+
+async def hello_world(request):
+    return templates.TemplateResponse(request, "main.html")
 
 
-@app.route("/")
-def hello_world():
-    return render_template("main.html")
-
-
-@app.route("/search", methods=["GET"])
-def handle_search():
-    search = request.args.get("q")
+async def handle_search(request):
+    search = request.query_params["q"]
     if search is None:
         return "No search query provided", 400
-    # Set up the embedding model
-    torch.device("mps")
-    model = sentence_transformers.SentenceTransformer(
-        "Snowflake/snowflake-arctic-embed-m"
-    )
 
-    search_embed = model.encode(search)  # Embed the search query
-
-    conn = sqlite3.connect("search.db")  # Connect to the database
-    cur = conn.cursor()
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)
-    conn.enable_load_extension(False)
+    search_embed = app.state.model.encode(search)  # Embed the search query
 
     # Get the articles using the embeddings
-    cur.execute(
+    cur = db.execute(
         "SELECT vec_articles.uid, distance FROM vec_articles WHERE embedding MATCH ? ORDER BY distance LIMIT 10",
         (serialize_float32(search_embed),),
     )
     embed_articles = cur.fetchall()
+    distances = [row[1] for row in embed_articles]
+    if distances:
+        min_distance = min(distances)
+        max_distance = max(distances)
 
-    # Scale the embedding distances to be between 0 and 1
-    min_distance = embed_articles[0][1]
-    max_distance = embed_articles[-1][1]
-    for i in range(len(embed_articles)):
-        score = (embed_articles[i][1] - min_distance) / (max_distance - min_distance)
-        embed_articles[i] = (
-            embed_articles[i][0],
-            score,
-        )
-        print(score)
+        # Step 2: Normalize the distances to scores
+        if min_distance != max_distance:  # Avoid division by zero
+            normalized_results = [
+                (uid, 1 - (distance - min_distance) / (max_distance - min_distance))
+                for uid, distance in embed_articles
+            ]
+        else:  # If all distances are equal, assign a score of 1.0 to all
+            normalized_results = [(uid, 1.0) for uid, distance in embed_articles]
+
+        embed_articles = normalized_results
 
     # Get the articles using BM25
     cur.execute(
-        "SELECT uid, bm25(articles_fts, 10.0, 5.0) FROM articles_fts WHERE articles_fts MATCH ? ORDER BY bm25(articles_fts, 10.0, 5.0) LIMIT 10",
+        """
+    WITH scored_articles AS (
+        SELECT
+            uid,
+            bm25(articles_fts, 10.0, 5.0) AS score
+        FROM articles_fts
+        WHERE articles_fts MATCH ?
+        ORDER BY score
+        LIMIT 10
+    )
+    SELECT uid, score FROM scored_articles;
+    """,
         (search,),
     )
     bm25_articles = cur.fetchall()
 
     # Scale the bm25 scores to be between 0 and 1
-    min_score = bm25_articles[0][1]
-    max_score = bm25_articles[-1][1]
-    for i in range(len(bm25_articles)):
-        score = (bm25_articles[i][1] - min_score) / (max_score - min_score)
-        bm25_articles[i] = (bm25_articles[i][0], score)
-        print(score)
+    scores = [row[1] for row in bm25_articles]
+    if scores:
+        min_score = min(scores)
+        max_score = max(scores)
+
+        # Step 3: Normalize the scores
+        if min_score != max_score:  # Avoid division by zero
+            normalized_results = [
+                (uid, (score - min_score) / (max_score - min_score))
+                for uid, score in bm25_articles
+            ]
+        else:  # If all scores are the same, assign 1.0 to all
+            normalized_results = [(uid, 1.0) for uid, score in bm25_articles]
+
+        bm25_articles = normalized_results
 
     # Combine the two lists of articles and sort them by the combined score
     combined_articles = []
@@ -82,29 +95,30 @@ def handle_search():
 
         combined_articles.append((uid, score))
 
+    combined_articles += bm25_articles
     combined_articles.sort(key=lambda x: x[1], reverse=True)
 
     to_return = []
     for article in combined_articles:
-        full_article = cur.execute(
+        cur = db.execute(
             "SELECT uid, title, body, date, url, publication FROM articles WHERE uid = ?",
             (article[0],),
-        ).fetchone()
+        )
+        full_article = cur.fetchone()
         art = Article(full_article[1], full_article[2], full_article[0])
-        art.date = full_article[3]
-        art.url = full_article[4]
-        art.publication = full_article[5]
+        art.add_metadata(full_article[3], full_article[4], full_article[5])
+        art.score = article[1]
 
         to_return.append(art)
 
-    return render_template("results.html", search_results=to_return)
+    return templates.TemplateResponse(
+        request, "results.html", {"search_results": to_return}
+    )
 
 
-@app.route("/article/<id>")
-def article(id):
-    conn = sqlite3.connect("search.db")
-    cur = conn.cursor()
-    cur.execute(
+def article(request):
+    id = request.path_params["id"]
+    cur = db.execute(
         "SELECT uid, title, body, date, url, publication FROM articles WHERE uid = ?",
         (id,),
     )
@@ -114,16 +128,38 @@ def article(id):
         return "Article not found", 404
 
     article_obj = Article(article[1], article[2], article[0])
-    formatted = int(str(article[3])[:-3])  # Chop off the last three digits
-    date = datetime.datetime.fromtimestamp(formatted, datetime.UTC)
-    article_obj.date = date.strftime("%a, %B %d %Y")
+    article_obj.add_metadata(article[3], article[4], article[5])
 
-    article_obj.url = article[4]
-    article_obj.publication = article[5]
-    return render_template("results.html", article=article_obj)
+    return templates.TemplateResponse(request, "article.html", {"article": article_obj})
 
 
-if __name__ == "__main__":
-    import webbrowser
+@asynccontextmanager
+async def lifespan(app):
+    print("Startup")
+    # Set up the embedding model
+    torch.device("mps")
+    model = sentence_transformers.SentenceTransformer(
+        "Snowflake/snowflake-arctic-embed-m"
+    )
+    app.state.model = model
 
-    webbrowser.open("http://localhost:5000/")
+    global db
+    db = sqlite3.connect("file:search.db?mode=ro", uri=True, check_same_thread=False)
+    db.enable_load_extension(True)
+    sqlite_vec.load(db)
+    db.enable_load_extension(False)
+
+    yield
+
+    print("Shutdown")
+    db.disconnect()
+
+
+templates = Jinja2Templates(directory="templates")
+routes = [
+    Route("/", hello_world),
+    Route("/search", handle_search, methods=["GET"]),
+    Route("/article/{id}", article),
+    Mount("/static", app=StaticFiles(directory="static"), name="static"),
+]
+app = Starlette(debug=True, routes=routes, lifespan=lifespan)

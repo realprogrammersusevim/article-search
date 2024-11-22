@@ -3,41 +3,6 @@
 {% block title %}Article Search - Home{% endblock %}
 
 {% block content %}
-<div class="main-search-container">
-    <h1 class="main-title">Article Search</h1>
-    <form action="{{ url_for('handle_search') }}" method="get" class="main-search-form">
-        <input type="text" id="main-search-input" name="q" placeholder="Search for articles...">
-        <button type="submit" id="main-search-button">Search</button>
-    </form>
-</div>
-
-{% if featured_articles %}
-<div class="featured-articles">
-    <h2>Featured Articles</h2>
-    <div class="featured-grid">
-        {% for article in featured_articles %}
-        <div class="featured-article">
-            <h3><a href="{{ url_for('article', id=article.id) }}">{{ article.title }}</a></h3>
-            <p class="featured-summary">{{ article.summary[:100] }}...</p>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-
-{% if recent_articles %}
-<div class="recent-articles">
-    <h2>Recent Articles</h2>
-    <ul class="recent-list">
-        {% for article in recent_articles %}
-        <li>
-            <a href="{{ url_for('article', id=article.id) }}">{{ article.title }}</a>
-            <span class="recent-date">{{ article.date }}</span>
-        </li>
-        {% endfor %}
-    </ul>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block styles %}

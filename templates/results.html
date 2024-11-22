@@ -1,155 +1,18 @@
-<!doctype html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}Article Search{% endblock %}</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.6;
-      margin: 0;
-      padding: 20px;
-      background-color: #f4f4f4;
-    }
+{% block title %}Search Results{% endblock %}
 
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background-color: #fff;
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    }
-
-    .search-container {
-      display: flex;
-      margin-bottom: 20px;
-    }
-
-    #search-input {
-      flex-grow: 1;
-      padding: 10px;
-      font-size: 16px;
-      border: 1px solid #ddd;
-      border-right: none;
-      border-radius: 5px 0 0 5px;
-    }
-
-    #search-button {
-      padding: 10px 20px;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 0 5px 5px 0;
-      cursor: pointer;
-    }
-
-    #search-button:hover {
-      background-color: #0056b3;
-    }
-
-    .search-result {
-      border-bottom: 1px solid #eee;
-      padding-bottom: 15px;
-      margin-bottom: 15px;
-    }
-
-    .search-result h2 {
-      margin-bottom: 5px;
-    }
-
-    .search-result h2 a {
-      color: #007bff;
-      text-decoration: none;
-    }
-
-    .search-result h2 a:hover {
-      text-decoration: underline;
-    }
-
-    .search-result .url {
-      color: #006621;
-      font-size: 14px;
-      margin-bottom: 5px;
-    }
-
-    .search-result .summary {
-      color: #545454;
-      font-size: 14px;
-    }
-
-    .article-content {
-      line-height: 1.8;
-    }
-
-    .article-content h1 {
-      color: #333;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 10px;
-    }
-
-    .article-meta {
-      font-style: italic;
-      color: #666;
-      margin-bottom: 20px;
-    }
-
-    .back-link {
-      display: inline-block;
-      margin-top: 20px;
-      color: #007bff;
-      text-decoration: none;
-    }
-
-    .back-link:hover {
-      text-decoration: underline;
-    }
-  </style>
-</head>
-
-<body>
-  <div class="container">{% block content %} {% endblock %}</div>
-
-  {% block scripts %} {% endblock %}
-</body>
-
-</html>
-
-{% block search_results %}
-<div class="search-container">
-  <input type="text" id="search-input" placeholder="Search articles..." />
-  <button id="search-button">Search</button>
-</div>
+{% block content %}
 <div id="search-results">
   {% for result in search_results %}
   <div class="search-result">
     <h2>
       <a href="{{ url_for('article', id=result.id) }}">{{ result.title }}</a>
     </h2>
-    <div class="url">{{ result.url }}</div>
-    <div class="summary">{{ result.summary }}</div>
+    <div class="meta">By {{ result.publication }} on {{ result.date }}</div>
+    <div class="snippet">{{ result.snippet }}</div>
+    <div class="score">Score: {{ result.score }}</div>
   </div>
   {% endfor %}
 </div>
-
-<script>
-  document
-    .getElementById("search-button")
-    .addEventListener("click", function () {
-      const searchTerm = document.getElementById("search-input").value;
-      window.location.href =
-        "{{ url_for('handle_search') }}?q=" + encodeURIComponent(searchTerm);
-    });
-</script>
-{% endblock %} {% if article %}{% block article %}
-<article class="article-content">
-  <h1>{{ article.title }}</h1>
-  <div class="article-meta">
-    Published on {{ article.date }} by {{ article.publication }}
-  </div>
-  {{ article.body | safe }}
-</article>
-<a href="{{ url_for('handle_search') }}" class="back-link">&larr; Back to search results</a>
-{% endblock %}{% endif %}
+{% endblock %}

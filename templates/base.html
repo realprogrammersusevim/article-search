@@ -119,6 +119,10 @@
         .back-link:hover {
             text-decoration: underline;
         }
+        hr {
+            margin: 10px 0;
+            border: none;
+        }
     </style>
     {% endblock %}
 </head>
@@ -132,6 +136,13 @@
     </header>
 
     <main class="container">
+        <div class="search-container">
+            <h1 class="main-title">Article Search</h1>
+            <form action="{{ url_for('handle_search') }}" method="get" class="search-form">
+                <input type="text" id="search-input" name="q" placeholder="Search for articles...">
+                <button type="submit" id="search-button">Search</button>
+            </form>
+        </div>
         <div class="content">
             {% block content %}
             {% endblock %}
@@ -144,7 +155,20 @@
         </div>
     </footer>
 
-    {% block scripts %}
-    {% endblock %}
+<script>
+  document
+    .getElementById("search-button")
+    .addEventListener("click", function () {
+      const searchTerm = document.getElementById("search-input").value;
+      window.location.href =
+        "{{ url_for('handle_search') }}?q=" + encodeURIComponent(searchTerm);
+    });
+  document.getElementById("search-input").focus();
+  document.getElementById("search-input").addEventListener("keyup", function (event) {
+    if (event.key === "Enter") {
+      document.getElementById("search-button").click();
+    }
+  });
+</script>
 </body>
 </html>
