@@ -1,13 +1,13 @@
 import datetime
-from contextlib import asynccontextmanager
 import sqlite3
+from contextlib import asynccontextmanager
 
 import sentence_transformers
 import sqlite_vec
 import torch
 from sqlite_vec import serialize_float32
 from starlette.applications import Starlette
-from starlette.routing import Route, Mount
+from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
