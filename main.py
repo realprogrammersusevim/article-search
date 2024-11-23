@@ -152,7 +152,8 @@ async def lifespan(app):
     yield
 
     print("Shutdown")
-    db.disconnect()
+    # For some reason this errors
+    # db.disconnect()
 
 
 templates = Jinja2Templates(directory="templates")
