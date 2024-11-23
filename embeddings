@@ -80,7 +80,7 @@ def save_articles(articles, model):
                     (article.id, serialize_float32(article.embedding)),
                 )
             except sqlite3.IntegrityError:
-                continue
+                print(f"Article {article.id} already exists in the database")
 
         conn.commit()
         conn.close()
@@ -115,20 +115,25 @@ for i, art in tqdm(enumerate(res), total=total, desc="Processing articles"):
 print(f"Skipped {skipped} articles")
 
 conn.close()
+
 conn = sqlite3.connect("search.db")
 cur = conn.cursor()
 
 deduped = 0
+filtered_articles = []  # Create a new list for articles that are not duplicates
+
 # Check for duplicates
 for article in tqdm(new_articles, desc="Deduplicating"):
     try:
-        cur.execute("SELECT * FROM articles WHERE uid = ?", (article.id,))
-        if cur.fetchone() is not None:
-            new_articles.remove(article)
+        cur.execute("SELECT EXISTS(SELECT 1 FROM articles WHERE uid = ?)", (article.id,))
+        if not cur.fetchone()[0]:
+            filtered_articles.append(article)
+        else:
             deduped += 1
     except sqlite3.OperationalError:
         pass
 
+new_articles = filtered_articles  # Replace the original list with the filtered one
 conn.close()
 
 print(f"Deduped {deduped} articles")
