@@ -23,65 +23,74 @@ def save_articles(articles, model):
     for i, embed in enumerate(embeddings):
         articles[i].embedding = embed
 
-    conn = sqlite3.connect("news.db")
-    cur = conn.cursor()
+    # Don't allow keyboard interrupts to corrupt the database
+    try:
+        conn = sqlite3.connect("news.db")
+        cur = conn.cursor()
 
-    # Fetch all metadata in one go
-    cur.execute("SELECT uid, date, url, publication FROM articles_meta WHERE uid IN ({})".format(
-        ",".join("?" for _ in articles)
-    ), [article.id for article in articles])
+        # Fetch all metadata in one go
+        cur.execute("SELECT uid, date, url, publication FROM articles_meta WHERE uid IN ({})".format(
+            ",".join("?" for _ in articles)
+        ), [article.id for article in articles])
 
-    # Build a lookup dictionary
-    metadata = {row[0]: row[1:] for row in cur.fetchall()}
+        # Build a lookup dictionary
+        metadata = {row[0]: row[1:] for row in cur.fetchall()}
 
-    # Assign metadata to articles
-    for article in articles:
-        date, url, publication = metadata.get(article.id, (None, None, None))
-        article.date = date
-        article.url = url
-        article.publication = publication
+        # Assign metadata to articles
+        for article in articles:
+            date, url, publication = metadata.get(article.id, (None, None, None))
+            article.date = date
+            article.url = url
+            article.publication = publication
 
-    conn.close()
+        conn.close()
 
-    # Save the new articles
-    conn = sqlite3.connect("search.db")
-    cur = conn.cursor()
+        # Save the new articles
+        conn = sqlite3.connect("search.db")
+        cur = conn.cursor()
 
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)
-    conn.enable_load_extension(False)
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
 
-    cur.execute("CREATE TABLE IF NOT EXISTS articles (uid TEXT PRIMARY KEY, title TEXT, body TEXT, date TEXT, url TEXT, publication TEXT);")
-    cur.execute("CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(uid, title, body, tokenize = 'porter unicode61 remove_diacritics 1');")
-    cur.execute("CREATE VIRTUAL TABLE IF NOT EXISTS vec_articles USING vec0(uid TEXT PRIMARY KEY, embedding FLOAT[768]);")
-    conn.commit()
+        cur.execute("CREATE TABLE IF NOT EXISTS articles (uid TEXT PRIMARY KEY, title TEXT, body TEXT, date TEXT, url TEXT, publication TEXT);")
+        cur.execute("CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(uid, title, body, tokenize = 'porter unicode61 remove_diacritics 1');")
+        cur.execute("CREATE VIRTUAL TABLE IF NOT EXISTS vec_articles USING vec0(uid TEXT PRIMARY KEY, embedding FLOAT[768]);")
+        conn.commit()
 
-    for article in articles:
-        try:
-            cur.execute(
-                "INSERT INTO articles (uid, title, body, date, url, publication) VALUES (?, ?, ?, ?, ?, ?);",
-                (
-                    article.id,
-                    article.title,
-                    article.body,
-                    article.date,
-                    article.url,
-                    article.publication,
-                ),
-            )
-            cur.execute(
-                "INSERT INTO articles_fts (uid, title, body) VALUES (?, ?, ?);",
-                (article.id, article.title, article.body),
-            )
-            cur.execute(
-                "INSERT INTO vec_articles (uid, embedding) VALUES (?, ?);",
-                (article.id, serialize_float32(article.embedding)),
-            )
-        except sqlite3.IntegrityError:
-            continue
+        for article in articles:
+            try:
+                cur.execute(
+                    "INSERT INTO articles (uid, title, body, date, url, publication) VALUES (?, ?, ?, ?, ?, ?);",
+                    (
+                        article.id,
+                        article.title,
+                        article.body,
+                        article.date,
+                        article.url,
+                        article.publication,
+                    ),
+                )
+                cur.execute(
+                    "INSERT INTO articles_fts (uid, title, body) VALUES (?, ?, ?);",
+                    (article.id, article.title, article.body),
+                )
+                cur.execute(
+                    "INSERT INTO vec_articles (uid, embedding) VALUES (?, ?);",
+                    (article.id, serialize_float32(article.embedding)),
+                )
+            except sqlite3.IntegrityError:
+                continue
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
+
+    except KeyboardInterrupt:
+        print("Currently saving articles to the database, wait a moment.")
+
+    except Exception as e:
+        print(e)
+        conn.close()
 
 # Connect to the SQLite database
 conn = sqlite3.connect("news.db")
