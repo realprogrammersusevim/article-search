@@ -5,7 +5,6 @@ import re
 import sqlite3
 
 import sentence_transformers
-import torch
 from tqdm import tqdm
 import sqlite_vec
 from sqlite_vec import serialize_float32
@@ -139,8 +138,7 @@ conn.close()
 print(f"Deduped {deduped} articles")
 print(f"Generating embeddings for {len(new_articles)} articles")
 # Load the pre-trained model
-torch.device("mps")
-model = sentence_transformers.SentenceTransformer("Snowflake/snowflake-arctic-embed-m")
+model = sentence_transformers.SentenceTransformer("Snowflake/snowflake-arctic-embed-m", device="mps")
 
 chunks = [chunk for chunk in chunker(new_articles, 32 * 20)]
 
