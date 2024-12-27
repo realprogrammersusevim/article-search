@@ -1,4 +1,3 @@
-import datetime
 import sqlite3
 from contextlib import asynccontextmanager
 
@@ -129,6 +128,7 @@ def article(request):
 
     article_obj = Article(article[1], article[2], article[0])
     article_obj.add_metadata(article[3], article[4], article[5])
+    article_obj.summarize()
 
     return templates.TemplateResponse(request, "article.html", {"article": article_obj})
 

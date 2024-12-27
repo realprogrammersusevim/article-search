@@ -1,4 +1,5 @@
 import datetime
+from openai import OpenAI
 
 
 class Article:
@@ -11,6 +12,7 @@ class Article:
         self.url = None
         self.publication = None
         self.score = None
+        self.summary = None
 
     def serializable(self):
         to_serial = self
@@ -25,3 +27,20 @@ class Article:
         self.date = date.strftime("%a, %B %d %Y")
         self.url = url
         self.publication = publication
+
+    def summarize(self):
+        client = OpenAI(base_url="http://localhost:11434/v1", api_key="lol")
+        self.summary = (
+            client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Write a short summary for the following article: \n\n"
+                        + self.body,
+                    }
+                ],
+                model="llama3.2:3b",
+            )
+            .choices[0]
+            .message.content
+        )
