@@ -44,6 +44,6 @@ generated.
 
 ## TODO
 
-- [ ] Re-add summarization using the Llama 3b models
+- [x] Re-add summarization using the Llama 3b models
 - [ ] Save articles to sidebar to read later
 - [ ] Test other forms of result synthesis besides adding scaled scores
