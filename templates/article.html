@@ -5,6 +5,9 @@ block content %}
   <div class="article-meta">
     Published on {{ article.date }} by {{ article.publication }}
   </div>
+  <div class="summary">
+    <p>{{ article.summary }}</p>
+  </div>
   {{ article.body | safe }}
 </article>
 <a href="{{ url_for('handle_search') }}" class="back-link"
