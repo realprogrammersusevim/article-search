@@ -24,6 +24,15 @@ use a disk explorer like diskonaut to go to the largest file in the
 `File System/` directory. Copy the largest file you find to
 `article-search/news.db`
 
+## Install LLM
+
+If you want to see article summaries, then you can use Ollama to run LLMs for
+generating article summaries offline. Install Ollama like any other system
+package. For macOS for example that will be `$ brew install ollama`. Run
+`$ ollama pull llama3.2:3b` to install the 3b version of Llama 3.2. Finally, set
+up Ollama as a running background process and you'll start seeing article
+summaries show up at the top of articles.
+
 ## Processing Articles
 
 To perform fast searches we need a new database of processed articles. Run the
