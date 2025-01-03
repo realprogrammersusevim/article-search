@@ -30,17 +30,20 @@ class Article:
 
     def summarize(self):
         client = OpenAI(base_url="http://localhost:11434/v1", api_key="lol")
-        self.summary = (
-            client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": "Write a short summary for the following article: \n\n"
-                        + self.body,
-                    }
-                ],
-                model="llama3.2:3b",
+        try:
+            self.summary = (
+                client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": "Write a short summary for the following article: \n\n"
+                            + self.body,
+                        }
+                    ],
+                    model="llama3.2:3b",
+                )
+                .choices[0]
+                .message.content
             )
-            .choices[0]
-            .message.content
-        )
+        except:
+            self.summary = ""
