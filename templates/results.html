@@ -1,18 +1,12 @@
-{% extends "base.html" %}
-
-{% block title %}Search Results{% endblock %}
-
-{% block content %}
-<div id="search-results">
-  {% for result in search_results %}
-  <div class="search-result">
-    <h2>
-      <a href="{{ url_for('article', id=result.id) }}">{{ result.title }}</a>
-    </h2>
-    <div class="meta">By {{ result.publication }} on {{ result.date }}</div>
-    <div class="snippet">{{ result.snippet }}</div>
-    <div class="score">Score: {{ result.score }}</div>
+{% for result in search_results %}
+<article>
+  <h3>
+    <a href="{{ url_for('article', id=result.id) }}">{{ result.title }}</a>
+  </h3>
+  <div class="result-meta">
+    By {{ result.publication }} on {{ result.date }}
   </div>
-  {% endfor %}
-</div>
-{% endblock %}
+  <div class="result-snippet">{{ result.snippet }}</div>
+  <div class="result-score">Score: {{ result.score }}</div>
+</article>
+{% endfor %}
