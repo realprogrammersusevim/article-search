@@ -1,6 +1,5 @@
 #!python3
 
-import pickle
 import re
 import sqlite3
 
@@ -11,13 +10,13 @@ from sqlite_vec import serialize_float32
 
 from utils import Article
 
+
 def chunker(seq, size):
-    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+    return (seq[pos : pos + size] for pos in range(0, len(seq), size))
+
 
 def save_articles(articles, model):
-    embeddings = model.encode(
-        [article.body for article in articles], batch_size=32
-    )
+    embeddings = model.encode([article.body for article in articles], batch_size=32)
 
     for i, embed in enumerate(embeddings):
         articles[i].embedding = embed
@@ -28,9 +27,12 @@ def save_articles(articles, model):
         cur = conn.cursor()
 
         # Fetch all metadata in one go
-        cur.execute("SELECT uid, date, url, publication FROM articles_meta WHERE uid IN ({})".format(
-            ",".join("?" for _ in articles)
-        ), [article.id for article in articles])
+        cur.execute(
+            "SELECT uid, date, url, publication FROM articles_meta WHERE uid IN ({})".format(
+                ",".join("?" for _ in articles)
+            ),
+            [article.id for article in articles],
+        )
 
         # Build a lookup dictionary
         metadata = {row[0]: row[1:] for row in cur.fetchall()}
@@ -52,9 +54,15 @@ def save_articles(articles, model):
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
 
-        cur.execute("CREATE TABLE IF NOT EXISTS articles (uid TEXT PRIMARY KEY, title TEXT, body TEXT, date TEXT, url TEXT, publication TEXT);")
-        cur.execute("CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(uid, title, body, tokenize = 'porter unicode61 remove_diacritics 1');")
-        cur.execute("CREATE VIRTUAL TABLE IF NOT EXISTS vec_articles USING vec0(uid TEXT PRIMARY KEY, embedding FLOAT[768]);")
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS articles (uid TEXT PRIMARY KEY, title TEXT, body TEXT, date TEXT, url TEXT, publication TEXT);"
+        )
+        cur.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(uid, title, body, tokenize = 'porter unicode61 remove_diacritics 1');"
+        )
+        cur.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vec_articles USING vec0(uid TEXT PRIMARY KEY, embedding FLOAT[768]);"
+        )
         conn.commit()
 
         for article in articles:
@@ -91,16 +99,42 @@ def save_articles(articles, model):
         print(e)
         conn.close()
 
+
 # Connect to the SQLite database
-conn = sqlite3.connect("news.db")
+news_conn = sqlite3.connect("news.db")
+news_cur = news_conn.cursor()
+
+total = news_cur.execute("SELECT COUNT(*) FROM articles_fts;").fetchone()[0]
+res = news_cur.execute("SELECT title, text, uid FROM articles_fts;")
+
+conn = sqlite3.connect("search.db")
 cur = conn.cursor()
 
-total = cur.execute("SELECT COUNT(*) FROM articles_fts;").fetchone()[0]
-res = cur.execute("SELECT title, text, uid FROM articles_fts;")
+deduped = 0
+filtered_articles = []  # Create a new list for articles that are not duplicates
+
+# Check for duplicates
+for art in tqdm(res, total=total, desc="Deduplicating"):
+    article = Article(art[0], art[1], art[2])
+    try:
+        cur.execute(
+            "SELECT EXISTS(SELECT 1 FROM articles WHERE uid = ?)", (article.id,)
+        )
+        if not cur.fetchone()[0]:
+            filtered_articles.append(article)
+        else:
+            deduped += 1
+    except sqlite3.OperationalError:
+        pass
+
+conn.close()
+news_conn.close()
+
+print(f"Deduped {deduped} articles")
+
 new_articles = []
 skipped = 0
-for i, art in tqdm(enumerate(res), total=total, desc="Processing articles"):
-    article = Article(art[0], art[1], art[2])
+for article in tqdm(filtered_articles, desc="Processing articles"):
     if article.body == "":
         skipped += 1
         continue
@@ -115,30 +149,11 @@ print(f"Skipped {skipped} articles")
 
 conn.close()
 
-conn = sqlite3.connect("search.db")
-cur = conn.cursor()
-
-deduped = 0
-filtered_articles = []  # Create a new list for articles that are not duplicates
-
-# Check for duplicates
-for article in tqdm(new_articles, desc="Deduplicating"):
-    try:
-        cur.execute("SELECT EXISTS(SELECT 1 FROM articles WHERE uid = ?)", (article.id,))
-        if not cur.fetchone()[0]:
-            filtered_articles.append(article)
-        else:
-            deduped += 1
-    except sqlite3.OperationalError:
-        pass
-
-new_articles = filtered_articles  # Replace the original list with the filtered one
-conn.close()
-
-print(f"Deduped {deduped} articles")
 print(f"Generating embeddings for {len(new_articles)} articles")
 # Load the pre-trained model
-model = sentence_transformers.SentenceTransformer("Snowflake/snowflake-arctic-embed-m", device="mps")
+model = sentence_transformers.SentenceTransformer(
+    "Snowflake/snowflake-arctic-embed-m", device="mps"
+)
 
 chunks = [chunk for chunk in chunker(new_articles, 32 * 20)]
 
